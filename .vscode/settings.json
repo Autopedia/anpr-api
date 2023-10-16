@@ -1,0 +1,8 @@
+{
+  "editor.formatOnSave": false,
+  // 파일 저장 시 ESLint 실행
+  "editor.codeActionsOnSave": {
+    "source.fixAll": true,
+  },
+  "eslint.validate": ["javascript", "typescript", "html"]
+}
