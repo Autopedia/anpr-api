@@ -2,11 +2,12 @@ import path from "path";
 
 import express from "express";
 import ffi from "ffi-napi";
+import jpeg from "jpeg-js";
 import multer from "multer";
 import sharp from "sharp";
 
 function bootsrap() {
-  const lib = ffi.Library(path.join(__dirname, "bin", "libtsanpr.so"), {
+  const lib = ffi.Library(path.join(__dirname, "..", "bin", "libtsanpr.so"), {
     anpr_initialize: ["string", ["string"]],
     anpr_read_file: ["string", ["string", "string", "string"]],
     anpr_read_pixels: [
@@ -31,6 +32,8 @@ function bootsrap() {
       return res.status(400).send("No file uploaded.");
     }
 
+    const image = jpeg.decode(req.file.buffer, { formatAsRGBA: false });
+
     let metadata: sharp.Metadata;
     try {
       metadata = await sharp(req.file.buffer).metadata();
@@ -41,7 +44,7 @@ function bootsrap() {
 
     const result = lib.anpr_read_pixels(
       // @ts-ignore
-      req.file.buffer,
+      image.data,
       metadata.width,
       metadata.height,
       0,
@@ -52,6 +55,8 @@ function bootsrap() {
 
     res.status(200).json(result);
   });
+
+  app.listen(3000);
 }
 
 bootsrap();
