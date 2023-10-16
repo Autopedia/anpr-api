@@ -3,7 +3,34 @@ import path from "path";
 import express from "express";
 import ffi from "ffi-napi";
 import multer from "multer";
+import { Pointer } from "ref-napi";
 import sharp from "sharp";
+
+type AnprResult = {
+  area: { angle: number; width: number; height: number; x: number; y: number };
+  conf: { ocr: number; plate: number };
+  elapsed: number;
+  ev: boolean;
+  text: string;
+};
+
+function initialize() {
+  const lib = ffi.Library(path.join(__dirname, "..", "bin", "libtsanpr.so"), {
+    anpr_initialize: ["string", ["string"]],
+    anpr_read_file: ["string", ["string", "string", "string"]],
+    anpr_read_pixels: [
+      "string",
+      ["pointer", "int32", "int32", "int32", "string", "string", "string"],
+    ],
+  });
+
+  const error = lib.anpr_initialize("json");
+  if (error) {
+    throw error;
+  }
+
+  return lib;
+}
 
 async function decodeImage(buffer: Buffer) {
   return new Promise<{ buffer: Buffer; info: sharp.OutputInfo }>(
@@ -20,20 +47,7 @@ async function decodeImage(buffer: Buffer) {
 }
 
 function bootsrap() {
-  const lib = ffi.Library(path.join(__dirname, "..", "bin", "libtsanpr.so"), {
-    anpr_initialize: ["string", ["string"]],
-    anpr_read_file: ["string", ["string", "string", "string"]],
-    anpr_read_pixels: [
-      "string",
-      ["pointer", "int32", "int32", "int32", "string", "string", "string"],
-    ],
-  });
-
-  const error = lib.anpr_initialize("json");
-  if (error) {
-    console.error();
-    return -2;
-  }
+  const lib = initialize();
 
   const storage = multer.memoryStorage();
   const upload = multer({ storage });
@@ -54,8 +68,7 @@ function bootsrap() {
     }
 
     const result = lib.anpr_read_pixels(
-      // @ts-ignore
-      image.buffer,
+      image.buffer as Pointer<unknown>,
       image.info.width,
       image.info.height,
       0,
@@ -63,8 +76,11 @@ function bootsrap() {
       "json",
       "v",
     );
+    if (!result) {
+      return res.status(500).send("Internal server error.");
+    }
 
-    res.status(200).json(result);
+    return res.status(200).json(JSON.parse(result) as AnprResult[]);
   });
 
   app.listen(3000);
