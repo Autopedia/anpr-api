@@ -2,9 +2,22 @@ import path from "path";
 
 import express from "express";
 import ffi from "ffi-napi";
-import jpeg from "jpeg-js";
 import multer from "multer";
 import sharp from "sharp";
+
+async function decodeImage(buffer: Buffer) {
+  return new Promise<{ buffer: Buffer; info: sharp.OutputInfo }>(
+    (resolve, reject) => {
+      sharp(buffer)
+        .raw()
+        .toBuffer((err, data, info) => {
+          if (err) reject(err);
+
+          resolve({ buffer: data, info });
+        });
+    },
+  );
+}
 
 function bootsrap() {
   const lib = ffi.Library(path.join(__dirname, "..", "bin", "libtsanpr.so"), {
@@ -32,11 +45,9 @@ function bootsrap() {
       return res.status(400).send("No file uploaded.");
     }
 
-    const image = jpeg.decode(req.file.buffer, { formatAsRGBA: false });
-
-    let metadata: sharp.Metadata;
+    let image: { buffer: Buffer; info: sharp.OutputInfo };
     try {
-      metadata = await sharp(req.file.buffer).metadata();
+      image = await decodeImage(req.file.buffer);
     } catch (error) {
       console.error(error);
       return res.status(400).send("Invalid image.");
@@ -44,11 +55,11 @@ function bootsrap() {
 
     const result = lib.anpr_read_pixels(
       // @ts-ignore
-      image.data,
-      metadata.width,
-      metadata.height,
+      image.buffer,
+      image.info.width,
+      image.info.height,
       0,
-      "BGR",
+      image.info.channels === 4 ? "RGBA" : "RGB",
       "json",
       "v",
     );
